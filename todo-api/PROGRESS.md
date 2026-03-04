@@ -1,8 +1,9 @@
-# Todo API — Learning Project
+# Todo APP — Learning Project
 
 ## 👩‍💻 About
 A full-stack Todo application built to learn FastAPI and Docker from scratch.
-Built by: mariem (mimotomy)
+Built by: Mariem (MimoTomy)
+GitHub: https://github.com/MimoTomy/TODO-APP
 
 ## ✅ What I built so far
 
@@ -39,39 +40,51 @@ Built by: mariem (mimotomy)
 - User register and login
 - Each user sees only their own todos
 - Passwords are hashed with bcrypt
+- Auto login after register
+
+### Step 2 — Database Migrations with Alembic ✅
+- Installed and configured Alembic
+- Created first migration for users and todos tables
+- Added priority column to todos using migration
+- Learned how to update database without losing data
+- Flow: edit models.py → alembic revision --autogenerate → alembic upgrade head
+
+### Step 3 — Frontend Polish ✅
+- Built login page with JWT token saved in localStorage
+- Built register page with auto login after register
+- Updated todos page with JWT authentication
+- Added priority selector (low, medium, high)
+- Added logout button
+- Auto redirect to login if not logged in
+
+### Step 4 — Testing with Pytest ✅
+- Installed pytest and httpx
+- Created test_main.py with 6 tests
+- Used SQLite as separate test database
+- Tests: register, duplicate register, login, wrong password, add todo, delete todo
+- Fixed database.py to use fallback URL for local testing
+- All 6 tests passing ✅
+
+### Step 5 — GitHub ✅
+- Created monorepo TODO-APP with both frontend and backend
+- Pushed everything to github.com/MimoTomy/TODO-APP
+- Fixed submodule issue with todo-api
+
+### Step 6 — README ✅
+- Written professional README with badges
+- Includes project structure, how to run, API endpoints, tech stack
 
 ---
 
 ## 📍 Where I stopped
-Step 1 Authentication ✅ Done
-Step 2 Database migrations with Alembic ← NEXT
+Step 6 README ✅ Done
+Step 7 — Deploy Live ← NEXT
 
 ---
 
 ## 🗺️ Full Roadmap — What's coming next
 
-### Step 2 — Better Database with Alembic ⏳
-- [ ] Install and setup Alembic
-- [ ] Create first database migration
-- [ ] Learn how to update database without losing data
-- [ ] Add relationships between users and todos properly
-
-### Step 3 — Frontend Polish ⏳
-- [ ] Connect Next.js to FastAPI properly
-- [ ] Add Tailwind CSS for styling
-- [ ] Build login and register pages
-- [ ] Build todo list page
-- [ ] Add loading states and error messages
-- [ ] Make it mobile friendly
-
-### Step 4 — Testing ⏳
-- [ ] Install pytest
-- [ ] Write tests for register endpoint
-- [ ] Write tests for login endpoint
-- [ ] Write tests for todo endpoints
-- [ ] Make sure nothing breaks when adding new features
-
-### Step 5 — Deploy Live ⏳
+### Step 7 — Deploy Live ⏳
 - [ ] Create account on Railway or Render
 - [ ] Set up environment variables for production
 - [ ] Deploy backend API live
@@ -79,34 +92,41 @@ Step 2 Database migrations with Alembic ← NEXT
 - [ ] Get a real URL anyone can visit
 - [ ] Set up HTTPS secure connection
 
-### Step 6 — GitHub Polish ⏳
-- [ ] Write a professional README
-- [ ] Add project screenshots
-- [ ] Add clear description and tech stack
-- [ ] Add instructions on how to run the project
-- [ ] Clean up commit history
+### Step 8 — Improve the App ⏳
+- [ ] Mark todo as complete (click to check off)
+- [ ] Edit a todo (change the task text)
+- [ ] Due date for each todo
+- [ ] Filter todos (all / active / completed)
+- [ ] Categories/tags (work, personal, shopping)
+- [ ] Search todos
+- [ ] Sort by priority or date
+- [ ] Dark mode 🌙
 
 ---
 
 ## 📁 Project Structure
-todo-api/
-├── main.py          ← all API routes
-├── auth.py          ← JWT authentication logic
-├── models.py        ← database tables
-├── database.py      ← database connection
-├── requirements.txt ← Python packages
-└── Dockerfile       ← Docker image recipe
-
-todo-frontend/
-├── app/             ← Next.js pages
-└── Dockerfile       ← Docker image recipe
-
-docker-compose.yml   ← runs everything together
+TODO-APP/
+├── todo-api/
+│   ├── main.py          ← all API routes
+│   ├── auth.py          ← JWT authentication logic
+│   ├── models.py        ← database tables
+│   ├── database.py      ← database connection
+│   ├── test_main.py     ← pytest tests
+│   ├── requirements.txt ← Python packages
+│   ├── alembic/         ← database migrations
+│   └── Dockerfile       ← Docker image recipe
+├── todo-frontend/
+│   ├── app/
+│   │   ├── page.js          ← todos page
+│   │   ├── login/page.js    ← login page
+│   │   └── register/page.js ← register page
+│   └── Dockerfile
+└── docker-compose.yml   ← runs everything together
 
 ---
 
 ## 🚀 How to run
-cd ~
+cd ~/TODO-APP
 docker compose up --build
 
 ---
@@ -115,12 +135,13 @@ docker compose up --build
 - Backend API: http://localhost:8000
 - API Docs: http://localhost:8000/docs
 - Frontend: http://localhost:3000
+- GitHub: https://github.com/MimoTomy/TODO-APP
 - Docker Hub: https://hub.docker.com/r/mimotomy/todo-api
 
 ---
 
 ## 💡 How to continue with Claude
 Next time you open a new Claude session just say:
-"I am building a Todo API with FastAPI and Docker.
+"I am building a full stack Todo App with FastAPI, Next.js, PostgreSQL and Docker.
 Here is my progress file: [paste this file]
-Please continue from Step 2 — Alembic migrations"
+Please continue from Step 7 — Deploy Live"
