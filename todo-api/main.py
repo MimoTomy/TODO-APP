@@ -3,11 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from database import get_db, engine
-from models import Base, User, Todo
+from models import Base, User, Todo, Tag
 from auth import hash_password, verify_password, create_access_token, verify_token
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel , ConfigDict 
+from typing import Optional, List
 from datetime import date
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -31,12 +32,32 @@ class UserCreate(BaseModel):
 class TodoCreate(BaseModel):
     task: str
     priority: str = "medium"
-    due_date: Optional[date] = None          # ← new: optional due date (e.g. "2025-12-31")
+    due_date: Optional[date] = None
 
-class TodoUpdate(BaseModel):                 # ← new: for editing a todo
+class TodoUpdate(BaseModel):
     task: Optional[str] = None
     priority: Optional[str] = None
     due_date: Optional[date] = None
+
+class TagCreate(BaseModel):
+    name: str
+    color: str = "#6366f1"
+
+class TagOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    color: str
+
+class TodoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    task: str
+    completed: bool
+    priority: str
+    due_date: Optional[date]
+    tags: List[TagOut] = []
+
 
 # ── Helper ────────────────────────────────────────────
 
@@ -71,16 +92,26 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
 # ── Todo routes ───────────────────────────────────────
 
-@app.get("/todos")
-def get_todos(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(Todo).filter(Todo.owner_id == current_user.id).all()
+@app.get("/todos", response_model=List[TodoOut])
+def get_todos(
+    tag: Optional[str] = None,
+    search: Optional[str] = None,                  # ← NEW: search query param
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    query = db.query(Todo).filter(Todo.owner_id == current_user.id)
+    if tag:
+        query = query.filter(Todo.tags.any(Tag.name == tag))
+    if search:
+        query = query.filter(Todo.task.ilike(f"%{search}%"))  # ← NEW: case-insensitive search
+    return query.all()
 
 @app.post("/todos")
 def add_todo(todo: TodoCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     new_todo = Todo(
         task=todo.task,
         priority=todo.priority,
-        due_date=todo.due_date,              # ← new
+        due_date=todo.due_date,
         owner_id=current_user.id
     )
     db.add(new_todo)
@@ -88,7 +119,7 @@ def add_todo(todo: TodoCreate, db: Session = Depends(get_db), current_user: User
     db.refresh(new_todo)
     return new_todo
 
-@app.put("/todos/{id}")                      # ← new: edit task, priority, or due_date
+@app.put("/todos/{id}")
 def update_todo(id: int, updates: TodoUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     todo = db.query(Todo).filter(Todo.id == id, Todo.owner_id == current_user.id).first()
     if not todo:
@@ -103,12 +134,12 @@ def update_todo(id: int, updates: TodoUpdate, db: Session = Depends(get_db), cur
     db.refresh(todo)
     return todo
 
-@app.patch("/todos/{id}/complete")           # ← new: toggle completed on/off
+@app.patch("/todos/{id}/complete")
 def toggle_complete(id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     todo = db.query(Todo).filter(Todo.id == id, Todo.owner_id == current_user.id).first()
     if not todo:
         raise HTTPException(status_code=404, detail="Todo not found")
-    todo.completed = not todo.completed      # flip true ↔ false
+    todo.completed = not todo.completed
     db.commit()
     db.refresh(todo)
     return todo
@@ -121,3 +152,54 @@ def delete_todo(id: int, db: Session = Depends(get_db), current_user: User = Dep
     db.delete(todo)
     db.commit()
     return {"message": "Todo deleted!"}
+
+# ── Tag routes ────────────────────────────────────────
+
+@app.post("/tags", response_model=TagOut)
+def create_tag(tag: TagCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    new_tag = Tag(name=tag.name, color=tag.color, owner_id=current_user.id)
+    db.add(new_tag)
+    db.commit()
+    db.refresh(new_tag)
+    return new_tag
+
+@app.get("/tags", response_model=List[TagOut])
+def get_tags(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Tag).filter(Tag.owner_id == current_user.id).all()
+
+@app.delete("/tags/{id}")
+def delete_tag(id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    tag = db.query(Tag).filter(Tag.id == id, Tag.owner_id == current_user.id).first()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    db.delete(tag)
+    db.commit()
+    return {"message": "Tag deleted!"}
+
+@app.post("/todos/{id}/tags/{tag_id}")
+def add_tag_to_todo(id: int, tag_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    todo = db.query(Todo).filter(Todo.id == id, Todo.owner_id == current_user.id).first()
+    if not todo:
+        raise HTTPException(status_code=404, detail="Todo not found")
+    tag = db.query(Tag).filter(Tag.id == tag_id, Tag.owner_id == current_user.id).first()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    if tag in todo.tags:
+        raise HTTPException(status_code=400, detail="Tag already added")
+    todo.tags.append(tag)
+    db.commit()
+    return {"message": "Tag added to todo!"}
+
+@app.delete("/todos/{id}/tags/{tag_id}")
+def remove_tag_from_todo(id: int, tag_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    todo = db.query(Todo).filter(Todo.id == id, Todo.owner_id == current_user.id).first()
+    if not todo:
+        raise HTTPException(status_code=404, detail="Todo not found")
+    tag = db.query(Tag).filter(Tag.id == tag_id, Tag.owner_id == current_user.id).first()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    if tag not in todo.tags:
+        raise HTTPException(status_code=400, detail="Tag not on this todo")
+    todo.tags.remove(tag)
+    db.commit()
+    return {"message": "Tag removed from todo!"}

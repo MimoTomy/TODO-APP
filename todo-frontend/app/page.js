@@ -18,6 +18,18 @@ export default function Home() {
   const [filter, setFilter] = useState("all");
   const [dark, setDark] = useState(false);
 
+  // ── Tag state ──────────────────────────────────────
+  const [tags, setTags] = useState([]);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState("#6366f1");
+  const [filterTag, setFilterTag] = useState(null);
+  const [showTagManager, setShowTagManager] = useState(false);
+
+  // ── NEW: Search state ──────────────────────────────
+  const [searchInput, setSearchInput] = useState("");   // what user types
+  const [searchQuery, setSearchQuery] = useState("");   // debounced value sent to API
+  // ───────────────────────────────────────────────────
+
   function getToken() { return localStorage.getItem("token"); }
 
   useEffect(() => {
@@ -25,8 +37,22 @@ export default function Home() {
     if (saved === "dark") setDark(true);
     const token = getToken();
     if (!token) router.push("/login");
-    else loadTodos();
+    else { loadTodos(); loadTags(); }
   }, []);
+
+  useEffect(() => { if (!loading) loadTodos(filterTag, searchQuery); }, [filterTag]);
+
+  // ── NEW: Debounce — wait 300ms after user stops typing ──
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(searchInput);
+    }, 300);
+    return () => clearTimeout(timer); // cancel if user keeps typing
+  }, [searchInput]);
+
+  // ── NEW: Re-fetch when debounced search value changes ──
+  useEffect(() => { if (!loading) loadTodos(filterTag, searchQuery); }, [searchQuery]);
+  // ───────────────────────────────────────────────────────
 
   function toggleTheme() {
     const next = !dark;
@@ -34,14 +60,59 @@ export default function Home() {
     localStorage.setItem("theme", next ? "dark" : "light");
   }
 
-  async function loadTodos() {
-    const res = await fetch(`${API}/todos`, {
+  // ── UPDATED: now accepts both tagFilter and search ──
+  async function loadTodos(tagFilter = filterTag, search = searchQuery) {
+    const params = new URLSearchParams();
+    if (tagFilter) params.set("tag", tagFilter);
+    if (search)    params.set("search", search);
+    const url = `${API}/todos${params.toString() ? "?" + params.toString() : ""}`;
+    const res = await fetch(url, {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
     if (res.status === 401) { router.push("/login"); return; }
     const data = await res.json();
     setTodos(data);
     setLoading(false);
+  }
+
+  // ── Tag functions ──────────────────────────────────
+
+  async function loadTags() {
+    const res = await fetch(`${API}/tags`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    const data = await res.json();
+    setTags(data);
+  }
+
+  async function createTag() {
+    if (!newTagName.trim()) return;
+    await fetch(`${API}/tags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ name: newTagName.trim(), color: newTagColor }),
+    });
+    setNewTagName("");
+    loadTags();
+  }
+
+  async function deleteTag(tagId) {
+    await fetch(`${API}/tags/${tagId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (filterTag) setFilterTag(null);
+    loadTags();
+    loadTodos();
+  }
+
+  async function toggleTagOnTodo(todoId, tagId, hasTag) {
+    const method = hasTag ? "DELETE" : "POST";
+    await fetch(`${API}/todos/${todoId}/tags/${tagId}`, {
+      method,
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    loadTodos();
   }
 
   async function addTodo() {
@@ -137,6 +208,9 @@ export default function Home() {
         .cancel-btn:hover { color: ${th.textSecondary} !important; }
         .delete-btn:hover { color: #ef4444 !important; }
         .edit-btn:hover { color: ${th.accent} !important; }
+        .tag-chip:hover { opacity: 0.75; }
+        .tag-filter-btn:hover { opacity: 0.85; }
+        .search-clear:hover { color: ${th.textPrimary} !important; }
         input[type="date"]::-webkit-calendar-picker-indicator { filter: ${dark ? "invert(0.5)" : "none"}; cursor: pointer; }
       `}</style>
 
@@ -150,6 +224,11 @@ export default function Home() {
               <p style={{ color: th.textMuted, fontSize: 13, marginTop: 4 }}>{completedCount} of {todos.length} completed</p>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button className="theme-toggle" onClick={() => setShowTagManager(p => !p)}
+                title="Manage tags"
+                style={{ background: showTagManager ? th.accentBg : "none", border: `1px solid ${th.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 16, transition: "background 0.2s" }}>
+                🏷️
+              </button>
               <button className="theme-toggle" onClick={toggleTheme}
                 style={{ background: "none", border: `1px solid ${th.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 16, transition: "background 0.2s" }}>
                 {dark ? "☀️" : "🌙"}
@@ -160,6 +239,46 @@ export default function Home() {
               </button>
             </div>
           </div>
+
+          {/* Tag Manager Panel */}
+          {showTagManager && (
+            <div style={{ background: th.inputBg, border: `1px solid ${th.border}`, borderRadius: 14, padding: 16, marginBottom: 20 }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: th.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>
+                Manage Tags
+              </p>
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                <input
+                  value={newTagName}
+                  onChange={e => setNewTagName(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && createTag()}
+                  placeholder="Tag name..."
+                  style={{ flex: 1, background: th.card, border: `1.5px solid ${th.border}`, borderRadius: 8, padding: "7px 12px", color: th.textPrimary, fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}
+                />
+                <input
+                  type="color" value={newTagColor}
+                  onChange={e => setNewTagColor(e.target.value)}
+                  style={{ width: 38, height: 36, border: `1.5px solid ${th.border}`, borderRadius: 8, padding: 2, cursor: "pointer", background: th.card }}
+                />
+                <button className="add-btn" onClick={createTag}
+                  style={{ background: th.accent, color: "#fff", border: "none", borderRadius: 8, padding: "7px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                  Add
+                </button>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {tags.length === 0 && <p style={{ fontSize: 12, color: th.textMuted }}>No tags yet — create one above.</p>}
+                {tags.map(tag => (
+                  <div key={tag.id} style={{ display: "flex", alignItems: "center", gap: 4, background: tag.color + "22", border: `1px solid ${tag.color}55`, borderRadius: 20, padding: "3px 8px 3px 10px" }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: tag.color, display: "inline-block", flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, fontWeight: 500, color: tag.color }}>{tag.name}</span>
+                    <button onClick={() => deleteTag(tag.id)}
+                      style={{ background: "none", border: "none", color: tag.color, cursor: "pointer", fontSize: 14, lineHeight: 1, marginLeft: 2, opacity: 0.7, padding: "0 2px", fontFamily: "'DM Sans', sans-serif" }}>
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Progress bar */}
           {todos.length > 0 && (
@@ -192,8 +311,27 @@ export default function Home() {
             </div>
           </div>
 
+          {/* ── NEW: Search bar ────────────────────────── */}
+          <div style={{ position: "relative", marginBottom: 20 }}>
+            <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: th.textMuted, pointerEvents: "none" }}>🔍</span>
+            <input
+              type="text"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              placeholder="Search tasks..."
+              style={{ width: "100%", background: th.inputBg, border: `1.5px solid ${searchInput ? th.accent : th.border}`, borderRadius: 12, padding: "10px 36px 10px 36px", color: th.textPrimary, fontSize: 13, fontFamily: "'DM Sans', sans-serif", transition: "border-color 0.2s, background 0.3s" }}
+            />
+            {searchInput && (
+              <button className="search-clear" onClick={() => setSearchInput("")}
+                style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 14, color: th.textMuted, transition: "color 0.2s" }}>
+                ×
+              </button>
+            )}
+          </div>
+          {/* ─────────────────────────────────────────── */}
+
           {/* Filter tabs */}
-          <div style={{ display: "flex", borderBottom: `1.5px solid ${th.border}`, marginBottom: 20 }}>
+          <div style={{ display: "flex", borderBottom: `1.5px solid ${th.border}`, marginBottom: 12 }}>
             {["all", "active", "completed"].map(f => (
               <button key={f} className="filter-btn" onClick={() => setFilter(f)}
                 style={{ background: "none", border: "none", padding: "8px 16px", fontSize: 13, cursor: "pointer", fontWeight: 500, fontFamily: "'DM Sans', sans-serif", marginBottom: -1.5, transition: "color 0.2s",
@@ -207,13 +345,41 @@ export default function Home() {
             ))}
           </div>
 
+          {/* Tag filter chips */}
+          {tags.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16, paddingTop: 10 }}>
+              {tags.map(tag => (
+                <button key={tag.id} className="tag-filter-btn"
+                  onClick={() => setFilterTag(prev => prev === tag.name ? null : tag.name)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    background: filterTag === tag.name ? tag.color : tag.color + "22",
+                    border: `1px solid ${tag.color}66`, borderRadius: 20,
+                    padding: "3px 12px 3px 8px", cursor: "pointer",
+                    transition: "all 0.15s", fontFamily: "'DM Sans', sans-serif"
+                  }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: filterTag === tag.name ? "#fff" : tag.color, display: "inline-block" }} />
+                  <span style={{ fontSize: 12, fontWeight: 500, color: filterTag === tag.name ? "#fff" : tag.color }}>
+                    {tag.name}
+                  </span>
+                </button>
+              ))}
+              {filterTag && (
+                <button onClick={() => setFilterTag(null)}
+                  style={{ fontSize: 11, color: th.textMuted, background: "none", border: "none", cursor: "pointer", padding: "3px 6px", fontFamily: "'DM Sans', sans-serif" }}>
+                  ✕ clear
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Todo list */}
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {filteredTodos.length === 0 ? (
               <div style={{ textAlign: "center", padding: "48px 0" }}>
-                <p style={{ fontSize: 28, marginBottom: 12 }}>{filter === "completed" ? "🎯" : "✨"}</p>
+                <p style={{ fontSize: 28, marginBottom: 12 }}>{searchInput ? "🔍" : filter === "completed" ? "🎯" : "✨"}</p>
                 <p style={{ color: th.textMuted, fontSize: 13 }}>
-                  {filter === "completed" ? "Nothing completed yet." : "All clear — add a task above."}
+                  {searchInput ? `No tasks matching "${searchInput}"` : filter === "completed" ? "Nothing completed yet." : "All clear — add a task above."}
                 </p>
               </div>
             ) : (
@@ -247,7 +413,7 @@ export default function Home() {
                           style={{ width: 22, height: 22, border: `2px solid ${todo.completed ? th.accent : th.border}`, borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s", flexShrink: 0, background: todo.completed ? th.accent : "transparent" }}>
                           {todo.completed && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700 }}>✓</span>}
                         </button>
-                        <div>
+                        <div style={{ flex: 1 }}>
                           <p style={{ fontSize: 14, color: todo.completed ? th.textMuted : th.textPrimary, textDecoration: todo.completed ? "line-through" : "none", transition: "all 0.2s", lineHeight: 1.4 }}>
                             {todo.task}
                           </p>
@@ -257,6 +423,24 @@ export default function Home() {
                             </span>
                             {todo.due_date && (
                               <span style={{ fontSize: 11, color: th.textMuted }}>📅 {todo.due_date}</span>
+                            )}
+                            {todo.tags && todo.tags.map(tag => (
+                              <span key={tag.id} className="tag-chip"
+                                onClick={() => toggleTagOnTodo(todo.id, tag.id, true)}
+                                title={`Remove tag: ${tag.name}`}
+                                style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: tag.color + "22", color: tag.color, border: `1px solid ${tag.color}55`, cursor: "pointer", transition: "opacity 0.15s" }}>
+                                {tag.name}
+                              </span>
+                            ))}
+                            {tags.length > 0 && (
+                              <select
+                                onChange={e => { if (e.target.value) { toggleTagOnTodo(todo.id, parseInt(e.target.value), false); e.target.value = ""; }}}
+                                style={{ fontSize: 10, background: "none", border: `1px dashed ${th.border}`, borderRadius: 20, padding: "2px 6px", color: th.textMuted, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                                <option value="">+ tag</option>
+                                {tags.filter(t => !todo.tags.find(tt => tt.id === t.id)).map(tag => (
+                                  <option key={tag.id} value={tag.id}>{tag.name}</option>
+                                ))}
+                              </select>
                             )}
                           </div>
                         </div>

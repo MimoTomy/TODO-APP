@@ -108,3 +108,49 @@ def test_delete_todo():
     res = client.delete(f"/todos/{todo_id}", headers=headers)
     assert res.status_code == 200
     assert res.json() == {"message": "Todo deleted!"}
+
+
+# ── Tag tests ─────────────────────────────────────────
+
+def test_create_and_get_tags():
+    headers = register_and_login("taguser")
+    res = client.post("/tags", json={"name": "Work", "color": "#FF5733"}, headers=headers)
+    assert res.status_code == 200
+    assert res.json()["name"] == "Work"
+    assert res.json()["color"] == "#FF5733"
+
+    res = client.get("/tags", headers=headers)
+    assert res.status_code == 200
+    assert len(res.json()) == 1
+
+def test_add_and_remove_tag_from_todo():
+    headers = register_and_login("taguser2")
+    todo = client.post("/todos", json={"task": "Tagged todo", "priority": "low"}, headers=headers).json()
+    tag  = client.post("/tags",  json={"name": "Personal", "color": "#52B788"}, headers=headers).json()
+
+    res = client.post(f"/todos/{todo['id']}/tags/{tag['id']}", headers=headers)
+    assert res.status_code == 200
+
+    todos = client.get("/todos", headers=headers).json()
+    assert any(t["name"] == "Personal" for t in todos[0]["tags"])
+
+    res = client.delete(f"/todos/{todo['id']}/tags/{tag['id']}", headers=headers)
+    assert res.status_code == 200
+
+def test_filter_todos_by_tag():
+    headers = register_and_login("filteruser")
+    todo = client.post("/todos", json={"task": "Work task", "priority": "high"}, headers=headers).json()
+    tag  = client.post("/tags",  json={"name": "Work", "color": "#333"}, headers=headers).json()
+    client.post(f"/todos/{todo['id']}/tags/{tag['id']}", headers=headers)
+
+    res = client.get("/todos?tag=Work", headers=headers)
+    assert res.status_code == 200
+    assert len(res.json()) == 1
+    assert res.json()[0]["task"] == "Work task"
+
+def test_delete_tag():
+    headers = register_and_login("deltaguser")
+    tag = client.post("/tags", json={"name": "ToDelete", "color": "#000"}, headers=headers).json()
+    res = client.delete(f"/tags/{tag['id']}", headers=headers)
+    assert res.status_code == 200
+    assert res.json() == {"message": "Tag deleted!"}
