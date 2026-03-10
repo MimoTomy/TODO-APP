@@ -1,7 +1,5 @@
 import pytest
 import os
-
-# set test database BEFORE importing anything else
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 
 from fastapi.testclient import TestClient
@@ -10,12 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from database import Base, get_db
 from main import app
 
-# test database setup
-engine = create_engine(
-    "sqlite:///./test.db",
-    connect_args={"check_same_thread": False}
-)
-
+engine = create_engine("sqlite:///./test.db", connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(bind=engine)
 
@@ -29,91 +22,87 @@ def override_get_db():
 app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
-# ── Tests ────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────
+
+def register_and_login(username):
+    client.post("/register", json={"username": username, "password": "testpass"})
+    res = client.post("/login", data={"username": username, "password": "testpass"})
+    token = res.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+# ── Auth tests ────────────────────────────────────────
 
 def test_register():
-    res = client.post("/register", json={
-        "username": "testuser",
-        "password": "testpass"
-    })
+    res = client.post("/register", json={"username": "testuser", "password": "testpass"})
     assert res.status_code == 200
     assert res.json() == {"message": "User created successfully!"}
 
 def test_register_duplicate():
-    client.post("/register", json={
-        "username": "duplicate",
-        "password": "testpass"
-    })
-    res = client.post("/register", json={
-        "username": "duplicate",
-        "password": "testpass"
-    })
+    client.post("/register", json={"username": "duplicate", "password": "testpass"})
+    res = client.post("/register", json={"username": "duplicate", "password": "testpass"})
     assert res.status_code == 400
     assert res.json()["detail"] == "Username already exists"
 
 def test_login():
-    client.post("/register", json={
-        "username": "loginuser",
-        "password": "testpass"
-    })
-    res = client.post("/login", data={
-        "username": "loginuser",
-        "password": "testpass"
-    })
+    client.post("/register", json={"username": "loginuser", "password": "testpass"})
+    res = client.post("/login", data={"username": "loginuser", "password": "testpass"})
     assert res.status_code == 200
     assert "access_token" in res.json()
 
 def test_login_wrong_password():
-    client.post("/register", json={
-        "username": "wrongpass",
-        "password": "testpass"
-    })
-    res = client.post("/login", data={
-        "username": "wrongpass",
-        "password": "wrongpassword"
-    })
+    client.post("/register", json={"username": "wrongpass", "password": "testpass"})
+    res = client.post("/login", data={"username": "wrongpass", "password": "wrongpassword"})
     assert res.status_code == 401
 
-def test_add_and_get_todo():
-    client.post("/register", json={
-        "username": "todouser",
-        "password": "testpass"
-    })
-    login_res = client.post("/login", data={
-        "username": "todouser",
-        "password": "testpass"
-    })
-    token = login_res.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
+# ── Todo tests ────────────────────────────────────────
 
-    res = client.post("/todos", json={
-        "task": "Learn pytest",
-        "priority": "high"
-    }, headers=headers)
+def test_add_and_get_todo():
+    headers = register_and_login("todouser")
+    res = client.post("/todos", json={"task": "Learn pytest", "priority": "high"}, headers=headers)
     assert res.status_code == 200
     assert res.json()["task"] == "Learn pytest"
     assert res.json()["priority"] == "high"
+    assert res.json()["completed"] == False       # renamed from done
 
     res = client.get("/todos", headers=headers)
     assert res.status_code == 200
     assert len(res.json()) > 0
 
-def test_delete_todo():
-    client.post("/register", json={
-        "username": "deleteuser",
-        "password": "testpass"
-    })
-    login_res = client.post("/login", data={
-        "username": "deleteuser",
-        "password": "testpass"
-    })
-    token = login_res.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
-
-    add_res = client.post("/todos", json={
-        "task": "Delete me",
-        "priority": "low"
+def test_add_todo_with_due_date():             # ← new
+    headers = register_and_login("duedateuser")
+    res = client.post("/todos", json={
+        "task": "Finish project",
+        "priority": "high",
+        "due_date": "2025-12-31"
     }, headers=headers)
+    assert res.status_code == 200
+    assert res.json()["due_date"] == "2025-12-31"
+
+def test_update_todo():                        # ← new
+    headers = register_and_login("updateuser")
+    add_res = client.post("/todos", json={"task": "Old task", "priority": "low"}, headers=headers)
+    todo_id = add_res.json()["id"]
+
+    res = client.put(f"/todos/{todo_id}", json={"task": "Updated task", "priority": "high"}, headers=headers)
+    assert res.status_code == 200
+    assert res.json()["task"] == "Updated task"
+    assert res.json()["priority"] == "high"
+
+def test_toggle_complete():                    # ← new
+    headers = register_and_login("completeuser")
+    add_res = client.post("/todos", json={"task": "Toggle me", "priority": "medium"}, headers=headers)
+    todo_id = add_res.json()["id"]
+
+    res = client.patch(f"/todos/{todo_id}/complete", headers=headers)
+    assert res.status_code == 200
+    assert res.json()["completed"] == True     # was False, now True
+
+    res = client.patch(f"/todos/{todo_id}/complete", headers=headers)
+    assert res.json()["completed"] == False    # toggled back
+
+def test_delete_todo():
+    headers = register_and_login("deleteuser")
+    add_res = client.post("/todos", json={"task": "Delete me", "priority": "low"}, headers=headers)
     todo_id = add_res.json()["id"]
 
     res = client.delete(f"/todos/{todo_id}", headers=headers)

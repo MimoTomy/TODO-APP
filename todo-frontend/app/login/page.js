@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 const API = "http://127.0.0.1:8000";
@@ -10,29 +10,34 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [dark, setDark] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved === "dark") setDark(true);
+  }, []);
+
+  function toggleTheme() {
+    const next = !dark;
+    setDark(next);
+    localStorage.setItem("theme", next ? "dark" : "light");
+  }
 
   async function handleLogin() {
     if (!username || !password) return;
     setLoading(true);
     setError("");
-
-    // FastAPI expects form data for login, not JSON
     const formData = new URLSearchParams();
     formData.append("username", username);
     formData.append("password", password);
-
     const res = await fetch(`${API}/login`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: formData,
     });
-
     const data = await res.json();
-
     if (res.ok) {
-      // save the token in localStorage
       localStorage.setItem("token", data.access_token);
-      // redirect to todos page
       router.push("/");
     } else {
       setError(data.detail || "Wrong username or password");
@@ -40,57 +45,94 @@ export default function Login() {
     setLoading(false);
   }
 
+  const th = dark ? themes.dark : themes.light;
+
   return (
-    <main className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
-        <h1 className="text-3xl font-bold text-gray-800 mb-2">Welcome back 👋</h1>
-        <p className="text-gray-400 mb-8">Login to your account</p>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@300;400;500;600&display=swap');
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: ${th.bg}; font-family: 'DM Sans', sans-serif; }
+        ::placeholder { color: ${th.placeholder}; }
+        input:focus { outline: none; border-color: ${th.accent} !important; }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .login-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+        .login-btn:active { transform: translateY(0); }
+        .login-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+        .theme-toggle:hover { background: ${th.border} !important; }
+      `}</style>
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-4 py-3 mb-6 text-sm">
-            {error}
-          </div>
-        )}
+      <main style={{ minHeight: "100vh", background: th.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px", position: "relative", transition: "background 0.3s" }}>
 
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-          <input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-            placeholder="Enter your username"
-            className="w-full border-2 border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:border-indigo-500"
-          />
-        </div>
-
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-            placeholder="Enter your password"
-            className="w-full border-2 border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:border-indigo-500"
-          />
-        </div>
-
-        <button
-          onClick={handleLogin}
-          disabled={loading}
-          className="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 font-medium disabled:opacity-50"
-        >
-          {loading ? "Logging in..." : "Login"}
+        {/* Theme toggle top right */}
+        <button className="theme-toggle" onClick={toggleTheme}
+          style={{ position: "absolute", top: 20, right: 20, background: "none", border: `1px solid ${th.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 16, transition: "background 0.2s" }}>
+          {dark ? "☀️" : "🌙"}
         </button>
 
-        <p className="text-center text-gray-400 text-sm mt-6">
-          Don't have an account?{" "}
-          <a href="/register" className="text-indigo-600 hover:underline font-medium">
-            Register
-          </a>
-        </p>
-      </div>
-    </main>
+        {/* Decorative blobs */}
+        <div style={{ position: "absolute", width: 400, height: 400, borderRadius: "50%", top: -100, right: -100, background: `radial-gradient(circle, ${th.blobColor} 0%, transparent 70%)`, pointerEvents: "none" }} />
+        <div style={{ position: "absolute", width: 300, height: 300, borderRadius: "50%", bottom: -80, left: -80, background: `radial-gradient(circle, ${th.blobColor} 0%, transparent 70%)`, pointerEvents: "none" }} />
+
+        <div style={{ background: th.card, border: `1px solid ${th.border}`, borderRadius: 24, padding: "48px 40px", width: "100%", maxWidth: 420, animation: "fadeUp 0.4s ease forwards", boxShadow: th.shadow, position: "relative", zIndex: 1, transition: "background 0.3s" }}>
+
+          <div style={{ width: 40, height: 40, background: th.accentBg, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, marginBottom: 24 }}>✦</div>
+
+          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, color: th.textPrimary, fontWeight: 700, marginBottom: 6 }}>Welcome back</h1>
+          <p style={{ color: th.textMuted, fontSize: 13, marginBottom: 32 }}>Sign in to continue</p>
+
+          {error && (
+            <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171", borderRadius: 10, padding: "12px 16px", fontSize: 13, marginBottom: 24 }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: 11, color: th.textMuted, marginBottom: 6, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Username</label>
+            <input type="text" value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              placeholder="Enter your username"
+              style={{ width: "100%", background: th.inputBg, border: `1.5px solid ${th.border}`, borderRadius: 12, padding: "12px 16px", color: th.textPrimary, fontSize: 14, transition: "border-color 0.2s, background 0.3s", fontFamily: "'DM Sans', sans-serif" }} />
+          </div>
+
+          <div style={{ marginBottom: 24 }}>
+            <label style={{ display: "block", fontSize: 11, color: th.textMuted, marginBottom: 6, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Password</label>
+            <input type="password" value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              placeholder="Enter your password"
+              style={{ width: "100%", background: th.inputBg, border: `1.5px solid ${th.border}`, borderRadius: 12, padding: "12px 16px", color: th.textPrimary, fontSize: 14, transition: "border-color 0.2s, background 0.3s", fontFamily: "'DM Sans', sans-serif" }} />
+          </div>
+
+          <button className="login-btn" onClick={handleLogin} disabled={loading}
+            style={{ width: "100%", background: th.accent, color: "#fff", border: "none", borderRadius: 12, padding: "13px", fontWeight: 600, fontSize: 14, cursor: "pointer", transition: "filter 0.2s, transform 0.15s", fontFamily: "'DM Sans', sans-serif" }}>
+            {loading ? "Signing in..." : "Sign in →"}
+          </button>
+
+          <p style={{ textAlign: "center", color: th.textMuted, fontSize: 13, marginTop: 24 }}>
+            Don't have an account?{" "}
+            <a href="/register" style={{ color: th.accent, textDecoration: "none", fontWeight: 600 }}>Create one</a>
+          </p>
+        </div>
+      </main>
+    </>
   );
 }
+
+const themes = {
+  light: {
+    bg: "#f5f7ff", card: "#ffffff", border: "#e8eaf6", inputBg: "#f8f9ff",
+    accent: "#6366f1", accentDark: "#4f46e5", accentBg: "#eef2ff",
+    textPrimary: "#1e1e2e", textMuted: "#9ca3af", placeholder: "#c4c9e2",
+    shadow: "0 8px 40px rgba(99,102,241,0.1)",
+    blobColor: "rgba(99,102,241,0.06)",
+  },
+  dark: {
+    bg: "#0f0f13", card: "#15151c", border: "#1e1e28", inputBg: "#0f0f13",
+    accent: "#818cf8", accentDark: "#6366f1", accentBg: "rgba(129,140,248,0.1)",
+    textPrimary: "#f0f0f0", textMuted: "#4b5563", placeholder: "#3a3a4a",
+    shadow: "0 32px 80px rgba(0,0,0,0.5)",
+    blobColor: "rgba(129,140,248,0.05)",
+  },
+};
