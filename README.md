@@ -1,5 +1,4 @@
 # 📝 TODO APP
-
 A full-stack Todo application built with FastAPI, Next.js, PostgreSQL, and Docker.
 
 ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
@@ -13,16 +12,23 @@ A full-stack Todo application built with FastAPI, Next.js, PostgreSQL, and Docke
 
 - ✅ User register and login
 - ✅ JWT authentication
-- ✅ Create, view, and delete todos
+- ✅ Create, view, edit, and delete todos
+- ✅ Mark todos as complete / incomplete (toggle)
 - ✅ Todo priority (low, medium, high)
+- ✅ Due dates for todos
+- ✅ Filter todos by All / Active / Completed
+- ✅ Progress bar showing completion status
+- ✅ Dark mode and Light mode toggle (saved per user)
 - ✅ Each user sees only their own todos
 - ✅ Passwords hashed with bcrypt
 - ✅ Database migrations with Alembic
 - ✅ Fully containerized with Docker
+- ✅ Pytest tests for all endpoints
 
 ---
 
 ## 🏗️ Project Structure
+
 ```
 TODO-APP/
 ├── todo-api/               # FastAPI backend
@@ -32,6 +38,7 @@ TODO-APP/
 │   ├── database.py         # Database connection
 │   ├── test_main.py        # Pytest tests
 │   ├── requirements.txt    # Python dependencies
+│   ├── alembic/            # Database migrations
 │   └── Dockerfile
 ├── todo-frontend/          # Next.js frontend
 │   ├── app/
@@ -77,11 +84,14 @@ docker compose up --build
 | POST | /login | Login and get JWT token | ❌ |
 | GET | /todos | Get all your todos | ✅ |
 | POST | /todos | Create a new todo | ✅ |
+| PUT | /todos/{id} | Edit a todo | ✅ |
+| PATCH | /todos/{id}/complete | Toggle todo complete/incomplete | ✅ |
 | DELETE | /todos/{id} | Delete a todo | ✅ |
 
 ---
 
 ## 🧪 Running Tests
+
 ```bash
 cd todo-api
 source venv/bin/activate
