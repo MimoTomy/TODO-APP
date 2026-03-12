@@ -24,6 +24,9 @@ A full-stack Todo application built with FastAPI, Next.js, PostgreSQL, and Docke
 - ✅ Database migrations with Alembic
 - ✅ Fully containerized with Docker
 - ✅ Pytest tests for all endpoints
+- ✅ Tags & Categories (Phase 1)
+- ✅ Search & Smart Filters (Phase 2)
+- ✅ Subtasks (Phase 3)
 
 ---
 
@@ -82,20 +85,52 @@ docker compose up --build
 |--------|----------|-------------|---------------|
 | POST | /register | Create a new account | ❌ |
 | POST | /login | Login and get JWT token | ❌ |
-| GET | /todos | Get all your todos | ✅ |
+| GET | /todos | Get all your todos (supports ?tag= and ?search=) | ✅ |
 | POST | /todos | Create a new todo | ✅ |
 | PUT | /todos/{id} | Edit a todo | ✅ |
 | PATCH | /todos/{id}/complete | Toggle todo complete/incomplete | ✅ |
 | DELETE | /todos/{id} | Delete a todo | ✅ |
+| POST | /todos/{id}/subtasks | Add a subtask to a todo | ✅ |
+| PATCH | /todos/{id}/subtasks/{subtask_id}/complete | Toggle subtask complete | ✅ |
+| DELETE | /todos/{id}/subtasks/{subtask_id} | Delete a subtask | ✅ |
+| POST | /tags | Create a tag | ✅ |
+| GET | /tags | Get all your tags | ✅ |
+| DELETE | /tags/{id} | Delete a tag | ✅ |
+| POST | /todos/{id}/tags/{tag_id} | Add a tag to a todo | ✅ |
+| DELETE | /todos/{id}/tags/{tag_id} | Remove a tag from a todo | ✅ |
+
+---
+
+## 🗄️ Database Migrations
+
+```bash
+# Generate a new migration after changing models.py
+docker compose exec backend alembic revision --autogenerate -m "your message"
+
+# Apply all pending migrations
+docker compose exec backend alembic upgrade head
+
+# If migrations are out of sync, stamp the last known good revision
+docker compose exec backend alembic stamp <revision_id>
+
+# Or fix directly in the DB
+docker compose exec db psql -U postgres -d todos -c "UPDATE alembic_version SET version_num = '<revision_id>';"
+```
+
+### Migration History
+```
+<base> → 213f38fd01d3   create users and todos tables
+213f38fd01d3 → 5d838fc87612   add priority column to todos
+5d838fc87612 → 0814d8ba6e1b   add due_date and rename done to completed
+0814d8ba6e1b → 7c4d553231b8   add tags and subtasks (parent_id)
+```
 
 ---
 
 ## 🧪 Running Tests
 
 ```bash
-cd todo-api
-source venv/bin/activate
-pytest test_main.py -v
+docker compose exec backend pytest test_main.py -v
 ```
 
 ---
@@ -111,6 +146,22 @@ pytest test_main.py -v
 | Migrations | Alembic |
 | Container | Docker + Docker Compose |
 | Testing | Pytest |
+
+---
+
+## 📦 Phases Completed
+
+| Phase | Feature | Status |
+|-------|---------|--------|
+| Phase 1 | Tags & Categories | ✅ Done |
+| Phase 2 | Search & Smart Filters | ✅ Done |
+| Phase 3 | Subtasks | ✅ Done |
+| Phase 4 | Analytics Dashboard | 🔜 Next |
+| Phase 5 | Advanced Security (refresh tokens, rate limiting) | 🔜 Planned |
+| Phase 6 | Collaboration & WebSockets | 🔜 Planned |
+| Phase 7 | AI Smart Suggestions | 🔜 Planned |
+| Phase 8 | CI/CD & Deployment | 🔜 Planned |
+| Phase 9 | Mobile App (React Native) | 🔜 Planned |
 
 ---
 

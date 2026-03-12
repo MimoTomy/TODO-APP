@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from database import get_db, engine
 from models import Base, User, Todo, Tag
 from auth import hash_password, verify_password, create_access_token, verify_token
-from pydantic import BaseModel , ConfigDict 
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import date
 
@@ -49,6 +49,14 @@ class TagOut(BaseModel):
     name: str
     color: str
 
+class SubtaskOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    task: str
+    completed: bool
+    priority: str
+    due_date: Optional[date]
+
 class TodoOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -57,6 +65,7 @@ class TodoOut(BaseModel):
     priority: str
     due_date: Optional[date]
     tags: List[TagOut] = []
+    subtasks: List[SubtaskOut] = []
 
 
 # ── Helper ────────────────────────────────────────────
@@ -95,16 +104,23 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 @app.get("/todos", response_model=List[TodoOut])
 def get_todos(
     tag: Optional[str] = None,
-    search: Optional[str] = None,                  # ← NEW: search query param
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    query = db.query(Todo).filter(Todo.owner_id == current_user.id)
+    query = db.query(Todo).filter(
+        Todo.owner_id == current_user.id,
+        Todo.parent_id == None
+    )
     if tag:
         query = query.filter(Todo.tags.any(Tag.name == tag))
     if search:
-        query = query.filter(Todo.task.ilike(f"%{search}%"))  # ← NEW: case-insensitive search
-    return query.all()
+        query = query.filter(Todo.task.ilike(f"%{search}%"))
+    todos = query.all()
+    # ← manually load subtasks to avoid lazy loading issues
+    for todo in todos:
+        todo.__dict__["subtasks"] = db.query(Todo).filter(Todo.parent_id == todo.id).all()
+    return todos
 
 @app.post("/todos")
 def add_todo(todo: TodoCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -152,6 +168,67 @@ def delete_todo(id: int, db: Session = Depends(get_db), current_user: User = Dep
     db.delete(todo)
     db.commit()
     return {"message": "Todo deleted!"}
+
+# ── Subtask routes ────────────────────────────────────
+
+@app.post("/todos/{id}/subtasks", response_model=SubtaskOut)
+def add_subtask(
+    id: int,
+    subtask: TodoCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    parent = db.query(Todo).filter(Todo.id == id, Todo.owner_id == current_user.id).first()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Todo not found")
+    new_subtask = Todo(
+        task=subtask.task,
+        priority=subtask.priority,
+        due_date=subtask.due_date,
+        owner_id=current_user.id,
+        parent_id=id
+    )
+    db.add(new_subtask)
+    db.commit()
+    db.refresh(new_subtask)
+    return new_subtask
+
+@app.patch("/todos/{id}/subtasks/{subtask_id}/complete")
+def toggle_subtask_complete(
+    id: int,
+    subtask_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    subtask = db.query(Todo).filter(
+        Todo.id == subtask_id,
+        Todo.parent_id == id,
+        Todo.owner_id == current_user.id
+    ).first()
+    if not subtask:
+        raise HTTPException(status_code=404, detail="Subtask not found")
+    subtask.completed = not subtask.completed
+    db.commit()
+    db.refresh(subtask)
+    return subtask
+
+@app.delete("/todos/{id}/subtasks/{subtask_id}")
+def delete_subtask(
+    id: int,
+    subtask_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    subtask = db.query(Todo).filter(
+        Todo.id == subtask_id,
+        Todo.parent_id == id,
+        Todo.owner_id == current_user.id
+    ).first()
+    if not subtask:
+        raise HTTPException(status_code=404, detail="Subtask not found")
+    db.delete(subtask)
+    db.commit()
+    return {"message": "Subtask deleted!"}
 
 # ── Tag routes ────────────────────────────────────────
 

@@ -25,10 +25,13 @@ export default function Home() {
   const [filterTag, setFilterTag] = useState(null);
   const [showTagManager, setShowTagManager] = useState(false);
 
-  // ── NEW: Search state ──────────────────────────────
-  const [searchInput, setSearchInput] = useState("");   // what user types
-  const [searchQuery, setSearchQuery] = useState("");   // debounced value sent to API
-  // ───────────────────────────────────────────────────
+  // ── Search state ───────────────────────────────────
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // ── Subtask state ──────────────────────────────────
+  const [expandedTodos, setExpandedTodos] = useState({});   // { todoId: true/false }
+  const [subtaskInputs, setSubtaskInputs] = useState({});   // { todoId: "text" }
 
   function getToken() { return localStorage.getItem("token"); }
 
@@ -42,17 +45,12 @@ export default function Home() {
 
   useEffect(() => { if (!loading) loadTodos(filterTag, searchQuery); }, [filterTag]);
 
-  // ── NEW: Debounce — wait 300ms after user stops typing ──
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearchQuery(searchInput);
-    }, 300);
-    return () => clearTimeout(timer); // cancel if user keeps typing
+    const timer = setTimeout(() => setSearchQuery(searchInput), 300);
+    return () => clearTimeout(timer);
   }, [searchInput]);
 
-  // ── NEW: Re-fetch when debounced search value changes ──
   useEffect(() => { if (!loading) loadTodos(filterTag, searchQuery); }, [searchQuery]);
-  // ───────────────────────────────────────────────────────
 
   function toggleTheme() {
     const next = !dark;
@@ -60,29 +58,22 @@ export default function Home() {
     localStorage.setItem("theme", next ? "dark" : "light");
   }
 
-  // ── UPDATED: now accepts both tagFilter and search ──
   async function loadTodos(tagFilter = filterTag, search = searchQuery) {
     const params = new URLSearchParams();
     if (tagFilter) params.set("tag", tagFilter);
     if (search)    params.set("search", search);
     const url = `${API}/todos${params.toString() ? "?" + params.toString() : ""}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } });
     if (res.status === 401) { router.push("/login"); return; }
-    const data = await res.json();
-    setTodos(data);
+    setTodos(await res.json());
     setLoading(false);
   }
 
   // ── Tag functions ──────────────────────────────────
 
   async function loadTags() {
-    const res = await fetch(`${API}/tags`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
-    const data = await res.json();
-    setTags(data);
+    const res = await fetch(`${API}/tags`, { headers: { Authorization: `Bearer ${getToken()}` } });
+    setTags(await res.json());
   }
 
   async function createTag() {
@@ -97,23 +88,21 @@ export default function Home() {
   }
 
   async function deleteTag(tagId) {
-    await fetch(`${API}/tags/${tagId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
+    await fetch(`${API}/tags/${tagId}`, { method: "DELETE", headers: { Authorization: `Bearer ${getToken()}` } });
     if (filterTag) setFilterTag(null);
     loadTags();
     loadTodos();
   }
 
   async function toggleTagOnTodo(todoId, tagId, hasTag) {
-    const method = hasTag ? "DELETE" : "POST";
     await fetch(`${API}/todos/${todoId}/tags/${tagId}`, {
-      method,
+      method: hasTag ? "DELETE" : "POST",
       headers: { Authorization: `Bearer ${getToken()}` },
     });
     loadTodos();
   }
+
+  // ── Todo functions ─────────────────────────────────
 
   async function addTodo() {
     if (!task.trim()) return;
@@ -127,18 +116,12 @@ export default function Home() {
   }
 
   async function deleteTodo(id) {
-    await fetch(`${API}/todos/${id}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
+    await fetch(`${API}/todos/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${getToken()}` } });
     loadTodos();
   }
 
   async function toggleComplete(id) {
-    await fetch(`${API}/todos/${id}/complete`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
+    await fetch(`${API}/todos/${id}/complete`, { method: "PATCH", headers: { Authorization: `Bearer ${getToken()}` } });
     loadTodos();
   }
 
@@ -163,6 +146,42 @@ export default function Home() {
     localStorage.removeItem("token");
     router.push("/login");
   }
+
+  // ── Subtask functions ──────────────────────────────
+
+  function toggleExpand(todoId) {
+    setExpandedTodos(prev => ({ ...prev, [todoId]: !prev[todoId] }));
+  }
+
+  async function addSubtask(todoId) {
+    const text = subtaskInputs[todoId]?.trim();
+    if (!text) return;
+    await fetch(`${API}/todos/${todoId}/subtasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ task: text, priority: "medium" }),
+    });
+    setSubtaskInputs(prev => ({ ...prev, [todoId]: "" }));
+    loadTodos();
+  }
+
+  async function toggleSubtaskComplete(todoId, subtaskId) {
+    await fetch(`${API}/todos/${todoId}/subtasks/${subtaskId}/complete`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    loadTodos();
+  }
+
+  async function deleteSubtask(todoId, subtaskId) {
+    await fetch(`${API}/todos/${todoId}/subtasks/${subtaskId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    loadTodos();
+  }
+
+  // ───────────────────────────────────────────────────
 
   const priorityConfig = {
     high:   { label: "High",   bg: dark ? "rgba(239,68,68,0.15)"  : "#fee2e2", text: "#ef4444" },
@@ -211,6 +230,9 @@ export default function Home() {
         .tag-chip:hover { opacity: 0.75; }
         .tag-filter-btn:hover { opacity: 0.85; }
         .search-clear:hover { color: ${th.textPrimary} !important; }
+        .subtask-row:hover { background: ${th.rowHover} !important; }
+        .subtask-row:hover .subtask-delete { opacity: 1 !important; }
+        .expand-btn:hover { color: ${th.accent} !important; }
         input[type="date"]::-webkit-calendar-picker-indicator { filter: ${dark ? "invert(0.5)" : "none"}; cursor: pointer; }
       `}</style>
 
@@ -243,26 +265,15 @@ export default function Home() {
           {/* Tag Manager Panel */}
           {showTagManager && (
             <div style={{ background: th.inputBg, border: `1px solid ${th.border}`, borderRadius: 14, padding: 16, marginBottom: 20 }}>
-              <p style={{ fontSize: 12, fontWeight: 600, color: th.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>
-                Manage Tags
-              </p>
+              <p style={{ fontSize: 12, fontWeight: 600, color: th.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Manage Tags</p>
               <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                <input
-                  value={newTagName}
-                  onChange={e => setNewTagName(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && createTag()}
-                  placeholder="Tag name..."
-                  style={{ flex: 1, background: th.card, border: `1.5px solid ${th.border}`, borderRadius: 8, padding: "7px 12px", color: th.textPrimary, fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}
-                />
-                <input
-                  type="color" value={newTagColor}
-                  onChange={e => setNewTagColor(e.target.value)}
-                  style={{ width: 38, height: 36, border: `1.5px solid ${th.border}`, borderRadius: 8, padding: 2, cursor: "pointer", background: th.card }}
-                />
+                <input value={newTagName} onChange={e => setNewTagName(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && createTag()} placeholder="Tag name..."
+                  style={{ flex: 1, background: th.card, border: `1.5px solid ${th.border}`, borderRadius: 8, padding: "7px 12px", color: th.textPrimary, fontSize: 13, fontFamily: "'DM Sans', sans-serif" }} />
+                <input type="color" value={newTagColor} onChange={e => setNewTagColor(e.target.value)}
+                  style={{ width: 38, height: 36, border: `1.5px solid ${th.border}`, borderRadius: 8, padding: 2, cursor: "pointer", background: th.card }} />
                 <button className="add-btn" onClick={createTag}
-                  style={{ background: th.accent, color: "#fff", border: "none", borderRadius: 8, padding: "7px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-                  Add
-                </button>
+                  style={{ background: th.accent, color: "#fff", border: "none", borderRadius: 8, padding: "7px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Add</button>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {tags.length === 0 && <p style={{ fontSize: 12, color: th.textMuted }}>No tags yet — create one above.</p>}
@@ -271,9 +282,7 @@ export default function Home() {
                     <span style={{ width: 7, height: 7, borderRadius: "50%", background: tag.color, display: "inline-block", flexShrink: 0 }} />
                     <span style={{ fontSize: 12, fontWeight: 500, color: tag.color }}>{tag.name}</span>
                     <button onClick={() => deleteTag(tag.id)}
-                      style={{ background: "none", border: "none", color: tag.color, cursor: "pointer", fontSize: 14, lineHeight: 1, marginLeft: 2, opacity: 0.7, padding: "0 2px", fontFamily: "'DM Sans', sans-serif" }}>
-                      ×
-                    </button>
+                      style={{ background: "none", border: "none", color: tag.color, cursor: "pointer", fontSize: 14, lineHeight: 1, marginLeft: 2, opacity: 0.7, padding: "0 2px", fontFamily: "'DM Sans', sans-serif" }}>×</button>
                   </div>
                 ))}
               </div>
@@ -289,20 +298,17 @@ export default function Home() {
 
           {/* Add todo form */}
           <div style={{ marginBottom: 24 }}>
-            <input type="text" value={task}
-              onChange={(e) => setTask(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addTodo()}
-              placeholder="Add a new task..."
-              style={{ width: "100%", background: th.inputBg, border: `1.5px solid ${th.border}`, borderRadius: 12, padding: "12px 16px", color: th.textPrimary, fontSize: 14, marginBottom: 10, fontFamily: "'DM Sans', sans-serif", transition: "border-color 0.2s, background 0.3s" }}
-            />
+            <input type="text" value={task} onChange={e => setTask(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && addTodo()} placeholder="Add a new task..."
+              style={{ width: "100%", background: th.inputBg, border: `1.5px solid ${th.border}`, borderRadius: 12, padding: "12px 16px", color: th.textPrimary, fontSize: 14, marginBottom: 10, fontFamily: "'DM Sans', sans-serif", transition: "border-color 0.2s, background 0.3s" }} />
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <select value={priority} onChange={(e) => setPriority(e.target.value)}
+              <select value={priority} onChange={e => setPriority(e.target.value)}
                 style={{ flex: 1, minWidth: 110, background: th.inputBg, border: `1.5px solid ${th.border}`, borderRadius: 12, padding: "10px 12px", color: th.textPrimary, fontSize: 13, fontFamily: "'DM Sans', sans-serif", cursor: "pointer", transition: "background 0.3s" }}>
                 <option value="low">🟢 Low</option>
                 <option value="medium">🟡 Medium</option>
                 <option value="high">🔴 High</option>
               </select>
-              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+              <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
                 style={{ flex: 1, minWidth: 140, background: th.inputBg, border: `1.5px solid ${th.border}`, borderRadius: 12, padding: "10px 12px", color: th.textPrimary, fontSize: 13, fontFamily: "'DM Sans', sans-serif", transition: "background 0.3s" }} />
               <button className="add-btn" onClick={addTodo}
                 style={{ background: th.accent, color: "#fff", border: "none", borderRadius: 12, padding: "10px 22px", fontWeight: 600, fontSize: 13, cursor: "pointer", transition: "filter 0.2s, transform 0.15s", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>
@@ -311,24 +317,17 @@ export default function Home() {
             </div>
           </div>
 
-          {/* ── NEW: Search bar ────────────────────────── */}
+          {/* Search bar */}
           <div style={{ position: "relative", marginBottom: 20 }}>
             <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: th.textMuted, pointerEvents: "none" }}>🔍</span>
-            <input
-              type="text"
-              value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
+            <input type="text" value={searchInput} onChange={e => setSearchInput(e.target.value)}
               placeholder="Search tasks..."
-              style={{ width: "100%", background: th.inputBg, border: `1.5px solid ${searchInput ? th.accent : th.border}`, borderRadius: 12, padding: "10px 36px 10px 36px", color: th.textPrimary, fontSize: 13, fontFamily: "'DM Sans', sans-serif", transition: "border-color 0.2s, background 0.3s" }}
-            />
+              style={{ width: "100%", background: th.inputBg, border: `1.5px solid ${searchInput ? th.accent : th.border}`, borderRadius: 12, padding: "10px 36px 10px 36px", color: th.textPrimary, fontSize: 13, fontFamily: "'DM Sans', sans-serif", transition: "border-color 0.2s, background 0.3s" }} />
             {searchInput && (
               <button className="search-clear" onClick={() => setSearchInput("")}
-                style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 14, color: th.textMuted, transition: "color 0.2s" }}>
-                ×
-              </button>
+                style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 14, color: th.textMuted, transition: "color 0.2s" }}>×</button>
             )}
           </div>
-          {/* ─────────────────────────────────────────── */}
 
           {/* Filter tabs */}
           <div style={{ display: "flex", borderBottom: `1.5px solid ${th.border}`, marginBottom: 12 }}>
@@ -351,24 +350,14 @@ export default function Home() {
               {tags.map(tag => (
                 <button key={tag.id} className="tag-filter-btn"
                   onClick={() => setFilterTag(prev => prev === tag.name ? null : tag.name)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 5,
-                    background: filterTag === tag.name ? tag.color : tag.color + "22",
-                    border: `1px solid ${tag.color}66`, borderRadius: 20,
-                    padding: "3px 12px 3px 8px", cursor: "pointer",
-                    transition: "all 0.15s", fontFamily: "'DM Sans', sans-serif"
-                  }}>
+                  style={{ display: "flex", alignItems: "center", gap: 5, background: filterTag === tag.name ? tag.color : tag.color + "22", border: `1px solid ${tag.color}66`, borderRadius: 20, padding: "3px 12px 3px 8px", cursor: "pointer", transition: "all 0.15s", fontFamily: "'DM Sans', sans-serif" }}>
                   <span style={{ width: 7, height: 7, borderRadius: "50%", background: filterTag === tag.name ? "#fff" : tag.color, display: "inline-block" }} />
-                  <span style={{ fontSize: 12, fontWeight: 500, color: filterTag === tag.name ? "#fff" : tag.color }}>
-                    {tag.name}
-                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: filterTag === tag.name ? "#fff" : tag.color }}>{tag.name}</span>
                 </button>
               ))}
               {filterTag && (
                 <button onClick={() => setFilterTag(null)}
-                  style={{ fontSize: 11, color: th.textMuted, background: "none", border: "none", cursor: "pointer", padding: "3px 6px", fontFamily: "'DM Sans', sans-serif" }}>
-                  ✕ clear
-                </button>
+                  style={{ fontSize: 11, color: th.textMuted, background: "none", border: "none", cursor: "pointer", padding: "3px 6px", fontFamily: "'DM Sans', sans-serif" }}>✕ clear</button>
               )}
             </div>
           )}
@@ -383,78 +372,138 @@ export default function Home() {
                 </p>
               </div>
             ) : (
-              filteredTodos.map((todo) => (
-                <div key={todo.id} className="todo-item todo-row"
-                  style={{ borderRadius: 12, padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", transition: "background 0.15s", cursor: "default" }}>
-                  {editingId === todo.id ? (
-                    <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
-                      <input value={editTask} onChange={(e) => setEditTask(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && saveEdit(todo.id)} autoFocus
-                        style={{ width: "100%", background: th.inputBg, border: `1.5px solid ${th.accent}`, borderRadius: 8, padding: "8px 12px", color: th.textPrimary, fontSize: 14, fontFamily: "'DM Sans', sans-serif" }} />
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <select value={editPriority} onChange={(e) => setEditPriority(e.target.value)}
-                          style={{ background: th.inputBg, border: `1.5px solid ${th.border}`, borderRadius: 8, padding: "6px 10px", color: th.textPrimary, fontSize: 12, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>
-                          <option value="low">🟢 Low</option>
-                          <option value="medium">🟡 Medium</option>
-                          <option value="high">🔴 High</option>
-                        </select>
-                        <input type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)}
-                          style={{ flex: 1, background: th.inputBg, border: `1.5px solid ${th.border}`, borderRadius: 8, padding: "6px 10px", color: th.textPrimary, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }} />
-                        <button className="save-btn" onClick={() => saveEdit(todo.id)}
-                          style={{ background: th.accent, color: "#fff", border: "none", borderRadius: 8, padding: "6px 16px", fontWeight: 600, fontSize: 12, cursor: "pointer", transition: "filter 0.2s", fontFamily: "'DM Sans', sans-serif" }}>Save</button>
-                        <button className="cancel-btn" onClick={() => setEditingId(null)}
-                          style={{ background: "none", border: "none", color: th.textMuted, fontSize: 12, cursor: "pointer", padding: "6px 10px", transition: "color 0.2s", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
-                        <button onClick={() => toggleComplete(todo.id)}
-                          style={{ width: 22, height: 22, border: `2px solid ${todo.completed ? th.accent : th.border}`, borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s", flexShrink: 0, background: todo.completed ? th.accent : "transparent" }}>
-                          {todo.completed && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700 }}>✓</span>}
-                        </button>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ fontSize: 14, color: todo.completed ? th.textMuted : th.textPrimary, textDecoration: todo.completed ? "line-through" : "none", transition: "all 0.2s", lineHeight: 1.4 }}>
-                            {todo.task}
-                          </p>
-                          <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
-                            <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20, textTransform: "uppercase", letterSpacing: "0.05em", background: priorityConfig[todo.priority]?.bg, color: priorityConfig[todo.priority]?.text }}>
-                              {priorityConfig[todo.priority]?.label}
-                            </span>
-                            {todo.due_date && (
-                              <span style={{ fontSize: 11, color: th.textMuted }}>📅 {todo.due_date}</span>
-                            )}
-                            {todo.tags && todo.tags.map(tag => (
-                              <span key={tag.id} className="tag-chip"
-                                onClick={() => toggleTagOnTodo(todo.id, tag.id, true)}
-                                title={`Remove tag: ${tag.name}`}
-                                style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: tag.color + "22", color: tag.color, border: `1px solid ${tag.color}55`, cursor: "pointer", transition: "opacity 0.15s" }}>
-                                {tag.name}
-                              </span>
-                            ))}
-                            {tags.length > 0 && (
-                              <select
-                                onChange={e => { if (e.target.value) { toggleTagOnTodo(todo.id, parseInt(e.target.value), false); e.target.value = ""; }}}
-                                style={{ fontSize: 10, background: "none", border: `1px dashed ${th.border}`, borderRadius: 20, padding: "2px 6px", color: th.textMuted, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-                                <option value="">+ tag</option>
-                                {tags.filter(t => !todo.tags.find(tt => tt.id === t.id)).map(tag => (
-                                  <option key={tag.id} value={tag.id}>{tag.name}</option>
-                                ))}
-                              </select>
-                            )}
+              filteredTodos.map((todo) => {
+                const subtaskCount = todo.subtasks?.length || 0;
+                const subtaskDone = todo.subtasks?.filter(s => s.completed).length || 0;
+                const isExpanded = expandedTodos[todo.id];
+
+                return (
+                  <div key={todo.id} className="todo-item"
+                    style={{ borderRadius: 12, border: `1px solid ${isExpanded ? th.accent + "33" : "transparent"}`, marginBottom: 2, transition: "border-color 0.2s" }}>
+
+                    {/* Main todo row */}
+                    <div className="todo-row"
+                      style={{ borderRadius: isExpanded ? "12px 12px 0 0" : 12, padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", transition: "background 0.15s", cursor: "default" }}>
+                      {editingId === todo.id ? (
+                        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
+                          <input value={editTask} onChange={e => setEditTask(e.target.value)}
+                            onKeyDown={e => e.key === "Enter" && saveEdit(todo.id)} autoFocus
+                            style={{ width: "100%", background: th.inputBg, border: `1.5px solid ${th.accent}`, borderRadius: 8, padding: "8px 12px", color: th.textPrimary, fontSize: 14, fontFamily: "'DM Sans', sans-serif" }} />
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <select value={editPriority} onChange={e => setEditPriority(e.target.value)}
+                              style={{ background: th.inputBg, border: `1.5px solid ${th.border}`, borderRadius: 8, padding: "6px 10px", color: th.textPrimary, fontSize: 12, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>
+                              <option value="low">🟢 Low</option>
+                              <option value="medium">🟡 Medium</option>
+                              <option value="high">🔴 High</option>
+                            </select>
+                            <input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)}
+                              style={{ flex: 1, background: th.inputBg, border: `1.5px solid ${th.border}`, borderRadius: 8, padding: "6px 10px", color: th.textPrimary, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }} />
+                            <button className="save-btn" onClick={() => saveEdit(todo.id)}
+                              style={{ background: th.accent, color: "#fff", border: "none", borderRadius: 8, padding: "6px 16px", fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Save</button>
+                            <button className="cancel-btn" onClick={() => setEditingId(null)}
+                              style={{ background: "none", border: "none", color: th.textMuted, fontSize: 12, cursor: "pointer", padding: "6px 10px", fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
                           </div>
                         </div>
+                      ) : (
+                        <>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
+                            <button onClick={() => toggleComplete(todo.id)}
+                              style={{ width: 22, height: 22, border: `2px solid ${todo.completed ? th.accent : th.border}`, borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s", flexShrink: 0, background: todo.completed ? th.accent : "transparent" }}>
+                              {todo.completed && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700 }}>✓</span>}
+                            </button>
+                            <div style={{ flex: 1 }}>
+                              <p style={{ fontSize: 14, color: todo.completed ? th.textMuted : th.textPrimary, textDecoration: todo.completed ? "line-through" : "none", transition: "all 0.2s", lineHeight: 1.4 }}>
+                                {todo.task}
+                              </p>
+                              <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
+                                <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20, textTransform: "uppercase", letterSpacing: "0.05em", background: priorityConfig[todo.priority]?.bg, color: priorityConfig[todo.priority]?.text }}>
+                                  {priorityConfig[todo.priority]?.label}
+                                </span>
+                                {todo.due_date && <span style={{ fontSize: 11, color: th.textMuted }}>📅 {todo.due_date}</span>}
+                                {todo.tags && todo.tags.map(tag => (
+                                  <span key={tag.id} className="tag-chip"
+                                    onClick={() => toggleTagOnTodo(todo.id, tag.id, true)}
+                                    title={`Remove tag: ${tag.name}`}
+                                    style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: tag.color + "22", color: tag.color, border: `1px solid ${tag.color}55`, cursor: "pointer", transition: "opacity 0.15s" }}>
+                                    {tag.name}
+                                  </span>
+                                ))}
+                                {tags.length > 0 && (
+                                  <select onChange={e => { if (e.target.value) { toggleTagOnTodo(todo.id, parseInt(e.target.value), false); e.target.value = ""; }}}
+                                    style={{ fontSize: 10, background: "none", border: `1px dashed ${th.border}`, borderRadius: 20, padding: "2px 6px", color: th.textMuted, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                                    <option value="">+ tag</option>
+                                    {tags.filter(t => !todo.tags.find(tt => tt.id === t.id)).map(tag => (
+                                      <option key={tag.id} value={tag.id}>{tag.name}</option>
+                                    ))}
+                                  </select>
+                                )}
+
+                                {/* ── Subtask progress badge ── */}
+                                {subtaskCount > 0 && (
+                                  <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: th.accentBg, color: th.accent, cursor: "pointer" }}
+                                    onClick={() => toggleExpand(todo.id)}>
+                                    ✦ {subtaskDone}/{subtaskCount}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="action-btns" style={{ display: "flex", gap: 2, opacity: 0, transition: "opacity 0.2s" }}>
+                            {/* ── Expand/collapse button ── */}
+                            <button className="expand-btn" onClick={() => toggleExpand(todo.id)}
+                              title={isExpanded ? "Collapse subtasks" : "Add subtasks"}
+                              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: "4px 6px", borderRadius: 6, color: isExpanded ? th.accent : th.textMuted, transition: "color 0.2s" }}>
+                              {isExpanded ? "▲" : "▼"}
+                            </button>
+                            <button className="edit-btn" onClick={() => startEdit(todo)}
+                              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, padding: "4px 6px", borderRadius: 6, transition: "color 0.2s", color: th.textMuted }}>✏️</button>
+                            <button className="delete-btn" onClick={() => deleteTodo(todo.id)}
+                              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, padding: "4px 6px", borderRadius: 6, transition: "color 0.2s", color: th.textMuted }}>🗑️</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* ── Subtasks panel ── */}
+                    {isExpanded && (
+                      <div style={{ background: th.inputBg, borderRadius: "0 0 12px 12px", padding: "10px 14px 14px 44px", borderTop: `1px solid ${th.border}` }}>
+
+                        {/* Existing subtasks */}
+                        {todo.subtasks && todo.subtasks.map(sub => (
+                          <div key={sub.id} className="subtask-row"
+                            style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 6px", borderRadius: 8, transition: "background 0.15s", marginBottom: 2 }}>
+                            <button onClick={() => toggleSubtaskComplete(todo.id, sub.id)}
+                              style={{ width: 16, height: 16, border: `2px solid ${sub.completed ? th.accent : th.border}`, borderRadius: 4, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, background: sub.completed ? th.accent : "transparent", transition: "all 0.2s" }}>
+                              {sub.completed && <span style={{ color: "#fff", fontSize: 9, fontWeight: 700 }}>✓</span>}
+                            </button>
+                            <span style={{ flex: 1, fontSize: 13, color: sub.completed ? th.textMuted : th.textPrimary, textDecoration: sub.completed ? "line-through" : "none", transition: "all 0.2s" }}>
+                              {sub.task}
+                            </span>
+                            <button className="subtask-delete" onClick={() => deleteSubtask(todo.id, sub.id)}
+                              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: th.textMuted, opacity: 0, transition: "opacity 0.2s, color 0.2s", padding: "2px 4px" }}>×</button>
+                          </div>
+                        ))}
+
+                        {/* Add subtask input */}
+                        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                          <input
+                            value={subtaskInputs[todo.id] || ""}
+                            onChange={e => setSubtaskInputs(prev => ({ ...prev, [todo.id]: e.target.value }))}
+                            onKeyDown={e => e.key === "Enter" && addSubtask(todo.id)}
+                            placeholder="Add a subtask..."
+                            style={{ flex: 1, background: th.card, border: `1.5px solid ${th.border}`, borderRadius: 8, padding: "6px 10px", color: th.textPrimary, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}
+                          />
+                          <button onClick={() => addSubtask(todo.id)}
+                            style={{ background: th.accent, color: "#fff", border: "none", borderRadius: 8, padding: "6px 12px", fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                            +
+                          </button>
+                        </div>
                       </div>
-                      <div className="action-btns" style={{ display: "flex", gap: 2, opacity: 0, transition: "opacity 0.2s" }}>
-                        <button className="edit-btn" onClick={() => startEdit(todo)}
-                          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, padding: "4px 6px", borderRadius: 6, transition: "color 0.2s", color: th.textMuted }}>✏️</button>
-                        <button className="delete-btn" onClick={() => deleteTodo(todo.id)}
-                          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, padding: "4px 6px", borderRadius: 6, transition: "color 0.2s", color: th.textMuted }}>🗑️</button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))
+                    )}
+
+                  </div>
+                );
+              })
             )}
           </div>
 
@@ -471,33 +520,16 @@ export default function Home() {
 
 const themes = {
   light: {
-    bg: "#f5f7ff",
-    card: "#ffffff",
-    border: "#e8eaf6",
-    inputBg: "#f8f9ff",
-    rowHover: "#f5f7ff",
-    accent: "#6366f1",
-    accentDark: "#4f46e5",
-    accentBg: "#eef2ff",
-    textPrimary: "#1e1e2e",
-    textSecondary: "#4b5563",
-    textMuted: "#9ca3af",
-    placeholder: "#c4c9e2",
-    shadow: "0 8px 40px rgba(99,102,241,0.08)",
+    bg: "#f5f7ff", card: "#ffffff", border: "#e8eaf6", inputBg: "#f8f9ff",
+    rowHover: "#f5f7ff", accent: "#6366f1", accentDark: "#4f46e5", accentBg: "#eef2ff",
+    textPrimary: "#1e1e2e", textSecondary: "#4b5563", textMuted: "#9ca3af",
+    placeholder: "#c4c9e2", shadow: "0 8px 40px rgba(99,102,241,0.08)",
   },
   dark: {
-    bg: "#0f0f13",
-    card: "#15151c",
-    border: "#1e1e28",
-    inputBg: "#0f0f13",
-    rowHover: "#1a1a22",
-    accent: "#818cf8",
-    accentDark: "#6366f1",
-    accentBg: "rgba(129,140,248,0.1)",
-    textPrimary: "#f0f0f0",
-    textSecondary: "#9ca3af",
-    textMuted: "#4b5563",
-    placeholder: "#3a3a4a",
+    bg: "#0f0f13", card: "#15151c", border: "#1e1e28", inputBg: "#0f0f13",
+    rowHover: "#1a1a22", accent: "#818cf8", accentDark: "#6366f1",
+    accentBg: "rgba(129,140,248,0.1)", textPrimary: "#f0f0f0",
+    textSecondary: "#9ca3af", textMuted: "#4b5563", placeholder: "#3a3a4a",
     shadow: "0 32px 80px rgba(0,0,0,0.5)",
   },
 };
