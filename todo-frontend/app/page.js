@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 const API = "http://127.0.0.1:8000";
 
@@ -30,8 +31,8 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
 
   // ── Subtask state ──────────────────────────────────
-  const [expandedTodos, setExpandedTodos] = useState({});   // { todoId: true/false }
-  const [subtaskInputs, setSubtaskInputs] = useState({});   // { todoId: "text" }
+  const [expandedTodos, setExpandedTodos] = useState({});
+  const [subtaskInputs, setSubtaskInputs] = useState({});
 
   function getToken() { return localStorage.getItem("token"); }
 
@@ -233,6 +234,7 @@ export default function Home() {
         .subtask-row:hover { background: ${th.rowHover} !important; }
         .subtask-row:hover .subtask-delete { opacity: 1 !important; }
         .expand-btn:hover { color: ${th.accent} !important; }
+        .analytics-btn:hover { background: ${th.accentBg} !important; color: ${th.accent} !important; }
         input[type="date"]::-webkit-calendar-picker-indicator { filter: ${dark ? "invert(0.5)" : "none"}; cursor: pointer; }
       `}</style>
 
@@ -246,6 +248,12 @@ export default function Home() {
               <p style={{ color: th.textMuted, fontSize: 13, marginTop: 4 }}>{completedCount} of {todos.length} completed</p>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {/* ── Analytics link ── */}
+              <Link href="/dashboard" className="analytics-btn"
+                title="Analytics dashboard"
+                style={{ background: "none", border: `1px solid ${th.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 16, textDecoration: "none", cursor: "pointer", transition: "background 0.2s, color 0.2s", display: "flex", alignItems: "center" }}>
+                📊
+              </Link>
               <button className="theme-toggle" onClick={() => setShowTagManager(p => !p)}
                 title="Manage tags"
                 style={{ background: showTagManager ? th.accentBg : "none", border: `1px solid ${th.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 16, transition: "background 0.2s" }}>
@@ -437,8 +445,6 @@ export default function Home() {
                                     ))}
                                   </select>
                                 )}
-
-                                {/* ── Subtask progress badge ── */}
                                 {subtaskCount > 0 && (
                                   <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: th.accentBg, color: th.accent, cursor: "pointer" }}
                                     onClick={() => toggleExpand(todo.id)}>
@@ -449,7 +455,6 @@ export default function Home() {
                             </div>
                           </div>
                           <div className="action-btns" style={{ display: "flex", gap: 2, opacity: 0, transition: "opacity 0.2s" }}>
-                            {/* ── Expand/collapse button ── */}
                             <button className="expand-btn" onClick={() => toggleExpand(todo.id)}
                               title={isExpanded ? "Collapse subtasks" : "Add subtasks"}
                               style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: "4px 6px", borderRadius: 6, color: isExpanded ? th.accent : th.textMuted, transition: "color 0.2s" }}>
@@ -467,8 +472,6 @@ export default function Home() {
                     {/* ── Subtasks panel ── */}
                     {isExpanded && (
                       <div style={{ background: th.inputBg, borderRadius: "0 0 12px 12px", padding: "10px 14px 14px 44px", borderTop: `1px solid ${th.border}` }}>
-
-                        {/* Existing subtasks */}
                         {todo.subtasks && todo.subtasks.map(sub => (
                           <div key={sub.id} className="subtask-row"
                             style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 6px", borderRadius: 8, transition: "background 0.15s", marginBottom: 2 }}>
@@ -483,8 +486,6 @@ export default function Home() {
                               style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: th.textMuted, opacity: 0, transition: "opacity 0.2s, color 0.2s", padding: "2px 4px" }}>×</button>
                           </div>
                         ))}
-
-                        {/* Add subtask input */}
                         <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                           <input
                             value={subtaskInputs[todo.id] || ""}
@@ -500,7 +501,6 @@ export default function Home() {
                         </div>
                       </div>
                     )}
-
                   </div>
                 );
               })

@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -7,7 +8,6 @@ from models import Base, User, Todo, Tag
 from auth import hash_password, verify_password, create_access_token, verify_token
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
-from datetime import date
 
 
 Base.metadata.create_all(bind=engine)
@@ -117,7 +117,6 @@ def get_todos(
     if search:
         query = query.filter(Todo.task.ilike(f"%{search}%"))
     todos = query.all()
-    # ← manually load subtasks to avoid lazy loading issues
     for todo in todos:
         todo.__dict__["subtasks"] = db.query(Todo).filter(Todo.parent_id == todo.id).all()
     return todos
@@ -280,3 +279,64 @@ def remove_tag_from_todo(id: int, tag_id: int, db: Session = Depends(get_db), cu
     todo.tags.remove(tag)
     db.commit()
     return {"message": "Tag removed from todo!"}
+
+# ── Analytics route ───────────────────────────────────
+
+@app.get("/analytics")
+def get_analytics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    today = date.today()
+
+    base = db.query(Todo).filter(
+        Todo.owner_id == current_user.id,
+        Todo.parent_id == None
+    )
+
+    total     = base.count()
+    completed = base.filter(Todo.completed == True).count()
+    pending   = base.filter(Todo.completed == False).count()
+    overdue   = base.filter(
+        Todo.completed == False,
+        Todo.due_date != None,
+        Todo.due_date < today
+    ).count()
+
+    last_7 = []
+    for i in range(6, -1, -1):
+        day = today - timedelta(days=i)
+        count = db.query(Todo).filter(
+            Todo.owner_id == current_user.id,
+            Todo.parent_id == None,
+            Todo.completed == True,
+            Todo.due_date == day
+        ).count()
+        last_7.append({"date": str(day), "count": count})
+
+    priorities = {}
+    for p in ["high", "medium", "low"]:
+        priorities[p] = base.filter(Todo.priority == p).count()
+
+    subtask_base = db.query(Todo).filter(
+        Todo.owner_id == current_user.id,
+        Todo.parent_id != None
+    )
+    subtasks_total     = subtask_base.count()
+    subtasks_completed = subtask_base.filter(Todo.completed == True).count()
+    subtask_rate       = round((subtasks_completed / subtasks_total * 100) if subtasks_total > 0 else 0)
+
+    return {
+        "total":     total,
+        "completed": completed,
+        "pending":   pending,
+        "overdue":   overdue,
+        "completion_rate": round((completed / total * 100) if total > 0 else 0),
+        "completions_per_day": last_7,
+        "by_priority": priorities,
+        "subtasks": {
+            "total":     subtasks_total,
+            "completed": subtasks_completed,
+            "rate":      subtask_rate,
+        }
+    }
